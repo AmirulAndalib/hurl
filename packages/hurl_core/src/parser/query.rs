@@ -16,7 +16,7 @@
  *
  */
 use crate::ast::*;
-use crate::parser::combinators::*;
+use crate::combinator::{choice, ParseError as ParseErrorTrait};
 use crate::parser::cookiepath::cookiepath;
 use crate::parser::primitives::*;
 use crate::parser::string::*;
@@ -24,9 +24,9 @@ use crate::parser::{ParseError, ParseErrorKind, ParseResult};
 use crate::reader::{Pos, Reader};
 
 pub fn query(reader: &mut Reader) -> ParseResult<Query> {
-    let start = reader.state.pos;
+    let start = reader.cursor.pos;
     let value = query_value(reader)?;
-    let end = reader.state.pos;
+    let end = reader.cursor.pos;
     Ok(Query {
         source_info: SourceInfo { start, end },
         value,
@@ -68,20 +68,20 @@ fn url_query(reader: &mut Reader) -> ParseResult<QueryValue> {
 fn header_query(reader: &mut Reader) -> ParseResult<QueryValue> {
     try_literal("header", reader)?;
     let space0 = one_or_more_spaces(reader)?;
-    let name = quoted_template(reader).map_err(|e| e.non_recoverable())?;
+    let name = quoted_template(reader).map_err(|e| e.to_non_recoverable())?;
     Ok(QueryValue::Header { space0, name })
 }
 
 fn cookie_query(reader: &mut Reader) -> ParseResult<QueryValue> {
     try_literal("cookie", reader)?;
     let space0 = one_or_more_spaces(reader)?;
-    let start = reader.state.pos;
+    let start = reader.cursor.pos;
     let s = quoted_oneline_string(reader)?;
     // todo should work with an encodedString in order to support escape sequence
     // or decode escape sequence with the cookiepath parser
 
     let mut cookiepath_reader = Reader::new(s.as_str());
-    cookiepath_reader.state.pos = Pos {
+    cookiepath_reader.cursor.pos = Pos {
         line: start.line,
         column: start.column + 1,
     };
@@ -98,7 +98,7 @@ fn body_query(reader: &mut Reader) -> ParseResult<QueryValue> {
 fn xpath_query(reader: &mut Reader) -> ParseResult<QueryValue> {
     try_literal("xpath", reader)?;
     let space0 = one_or_more_spaces(reader)?;
-    let expr = quoted_template(reader).map_err(|e| e.non_recoverable())?;
+    let expr = quoted_template(reader).map_err(|e| e.to_non_recoverable())?;
     Ok(QueryValue::Xpath { space0, expr })
 }
 
@@ -107,7 +107,7 @@ fn jsonpath_query(reader: &mut Reader) -> ParseResult<QueryValue> {
     let space0 = one_or_more_spaces(reader)?;
     //let expr = jsonpath_expr(reader)?;
     //  let start = reader.state.pos.clone();
-    let expr = quoted_template(reader).map_err(|e| e.non_recoverable())?;
+    let expr = quoted_template(reader).map_err(|e| e.to_non_recoverable())?;
     //    let end = reader.state.pos.clone();
     //    let expr = Template {
     //        elements: template.elements.iter().map(|e| match e {
@@ -155,7 +155,7 @@ pub fn regex_value(reader: &mut Reader) -> ParseResult<RegexValue> {
 fn variable_query(reader: &mut Reader) -> ParseResult<QueryValue> {
     try_literal("variable", reader)?;
     let space0 = one_or_more_spaces(reader)?;
-    let name = quoted_template(reader).map_err(|e| e.non_recoverable())?;
+    let name = quoted_template(reader).map_err(|e| e.to_non_recoverable())?;
     Ok(QueryValue::Variable { space0, name })
 }
 
@@ -205,7 +205,7 @@ fn certificate_field(reader: &mut Reader) -> ParseResult<CertificateAttributeNam
         let value =
             "Field <Subject>, <Issuer>, <Start-Date>, <Expire-Date> or <Serial-Number>".to_string();
         let kind = ParseErrorKind::Expecting { value };
-        let pos = reader.state.pos;
+        let pos = reader.cursor.pos;
         Err(ParseError::new(pos, false, kind))
     }
 }
@@ -294,7 +294,7 @@ mod tests {
                 },
             }
         );
-        assert_eq!(reader.state.cursor, 20);
+        assert_eq!(reader.cursor.offset, 20);
 
         // todo test with escape sequence
         //let mut reader = Reader::init("cookie \"cookie\u{31}\"");
@@ -401,6 +401,6 @@ mod tests {
                 }
             )]
         );
-        assert_eq!(reader.state.cursor, 14);
+        assert_eq!(reader.cursor.offset, 14);
     }
 }
